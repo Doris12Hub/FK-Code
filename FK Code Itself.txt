@@ -1,0 +1,93 @@
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER OFF
+GO
+SET NOCOUNT ON
+GO
+
+/********************************************************************************/
+/* Define the parms  */
+DECLARE @cmd       [VARCHAR](128),
+        @tablename [VARCHAR](128);
+
+/********************************************************************************/
+/* Housekeeping, drop table if exists */
+IF EXISTS (SELECT 0 FROM sysobjects where [name] = 'FK_relationship')
+ BEGIN
+  DROP TABLE FK_relationship;
+ END;
+
+/********************************************************************************/
+/* Create table to hold FK relationshio data>  */
+CREATE TABLE FK_relationship (
+      PKTABLE_QUALIFIER [VARCHAR](128)
+      ,PKTABLE_OWNER [VARCHAR](128)
+      ,PKTABLE_NAME [VARCHAR](128)
+      ,PKCOLUMN_NAME [VARCHAR](128)
+      ,FKTABLE_QUALIFIER [VARCHAR](128)
+      ,FKTABLE_OWNER [VARCHAR](128)
+      ,FKTABLE_NAME [VARCHAR](128)
+      ,FKCOLUMN_NAME [VARCHAR](128)
+      ,KEY_SEQ [VARCHAR](128)
+      ,UPDATE_RULE [VARCHAR](128)
+      ,DELETE_RULE [VARCHAR](128)
+      ,FK_NAME [VARCHAR](128)
+      ,PK_NAME [VARCHAR](128)
+      ,DEFERRABILITY [VARCHAR](128))
+
+/********************************************************************************/
+/* Loop thru tables to find FK relationships.  */
+DECLARE fk_cursor CURSOR FAST_FORWARD LOCAL FOR
+SELECT [name]    
+FROM sysobjects
+WHERE xtype = 'u'
+AND SCHEMA_NAME (1) = 'dbo'
+AND [name] <>'FK_relationship'
+ 
+ OPEN fk_cursor
+  FETCH NEXT FROM fk_cursor INTO @tablename
+   WHILE ( @@FETCH_STATUS <> -1 )
+      BEGIN
+       IF ( @@FETCH_STATUS <> -2 )
+        BEGIN     
+         SET @cmd =   "INSERT INTO FK_relationship EXEC sp_fkeys "+"'"+@tablename+"'"
+         --select (@cmd)
+         EXEC (@cmd)
+      END
+      FETCH NEXT FROM fk_cursor INTO @tablename
+      END
+      CLOSE fk_cursor
+      DEALLOCATE fk_cursor;
+
+/********************************************************************************/
+/* Add column to the result table to store the date and time of whne this qurey ran  */
+ALTER TABLE FK_relationship ADD  DTS DATETIME;
+UPDATE FK_relationship SET [DTS] = CONVERT(DATETIME,GETDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Eastern Standard Time')
+
+/********************************************************************************/
+/* Return the results  */
+SELECT PKTABLE_QUALIFIER               AS 'Database Name',
+       PKTABLE_OWNER                   AS 'Schema Name',
+       PKTABLE_NAME                    AS 'PK Table Name',
+       PKCOLUMN_NAME                   AS 'PK Column Name',
+       PK_NAME                         AS 'PK Name',
+       FK_NAME                         AS 'FK Name',
+       FKTABLE_NAME                    AS 'FK Table Name',
+       FKCOLUMN_NAME                   AS 'FK Column Name',
+       CONVERT(VARCHAR(32),[DTS], 109) AS 'As of'
+
+FROM FK_relationship
+ORDER BY PKTABLE_QUALIFIER,
+         PKTABLE_OWNER,
+         PKTABLE_NAME,
+         PK_NAME,
+         FKTABLE_NAME,
+         FKCOLUMN_NAME,
+         FK_NAME;
+
+/********************************************************************************/
+/* Houseeeping, drop table when no longer needed. */
+IF EXISTS (SELECT 0 FROM sysobjects where [name] = 'FK_relationship')
+ BEGIN
+  DROP TABLE FK_relationship;
+ END;
